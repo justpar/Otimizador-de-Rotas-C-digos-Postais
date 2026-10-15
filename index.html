@@ -1,0 +1,1758 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<meta name="description" content="Introduza N códigos postais portugueses, obtenha o caminho ótimo e envie-o para o Google Maps.">
+<title>Otimizador de Rotas — Códigos Postais (Portugal)</title>
+<link rel="preconnect" href="https://unpkg.com">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{
+  --bg:#f1f5f9; --panel:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
+  --brand:#0f766e; --brand2:#14b8a6; --warn:#b45309; --bad:#b91c1c; --ok:#15803d;
+  --radius:14px; --shadow:0 1px 2px rgba(15,23,42,.06), 0 8px 24px rgba(15,23,42,.08);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%}
+body{
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  background:var(--bg); color:var(--ink); font-size:15px; line-height:1.45;
+}
+button,input,select,textarea{font:inherit; color:inherit}
+
+.app{display:flex; flex-direction:column; min-height:100dvh}
+.topbar{background:linear-gradient(135deg,#0f766e,#0d9488); color:#fff;
+  padding:calc(12px + var(--safe-t)) 16px 12px}
+.topbar h1{margin:0; font-size:17px; font-weight:650; display:flex; align-items:center; gap:9px}
+.topbar p{margin:3px 0 0; font-size:12.5px; opacity:.88}
+
+.main{display:flex; flex:1; min-height:0}
+.side{width:430px; flex:0 0 430px; background:var(--panel);
+  display:flex; flex-direction:column; min-height:0; border-right:1px solid var(--line)}
+.side-scroll{overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:14px; flex:1; -webkit-overflow-scrolling:touch}
+.map-wrap{flex:1; position:relative; min-height:0}
+#map{position:absolute; inset:0; background:#dde5ec}
+
+@media (max-width:900px){
+  .main{flex-direction:column}
+  .side{width:100%; flex:0 0 auto; border-right:none; border-bottom:1px solid var(--line)}
+  .side-scroll{max-height:none; overflow:visible}
+  .map-wrap{height:56dvh; min-height:320px; flex:none}
+}
+
+.card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow)}
+.card>header{padding:11px 13px; border-bottom:1px solid var(--line); font-weight:650; font-size:13.5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.card .body{padding:13px}
+.badge{font-size:11px; font-weight:600; padding:2px 7px; border-radius:999px; background:#eef2f7; color:var(--muted); white-space:nowrap}
+.badge.ok{background:#dcfce7; color:var(--ok)}
+.badge.warn{background:#fef3c7; color:var(--warn)}
+.badge.bad{background:#fee2e2; color:var(--bad)}
+.badge.info{background:#dbeafe; color:#1d4ed8}
+
+textarea,input[type=text],select{
+  width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:10px;
+  background:#fbfdff; outline:none; transition:border-color .15s, box-shadow .15s;
+}
+textarea:focus,input[type=text]:focus,select:focus{border-color:var(--brand2); box-shadow:0 0 0 3px rgba(20,184,166,.16)}
+textarea{resize:vertical; min-height:118px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:14px; line-height:1.6}
+label.field{display:block; margin-bottom:10px}
+label.field>span{display:block; font-size:12.5px; font-weight:600; color:var(--muted); margin-bottom:5px}
+.row2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.subbox{border-top:1px dashed var(--line); padding-top:11px; margin:2px 0 11px}
+.subbox .hint{margin-top:8px; display:block}
+.subbox .badge{margin-right:4px}
+.check{display:flex; align-items:flex-start; gap:8px; font-size:13px; margin-top:8px; cursor:pointer}
+.check input{width:auto; margin-top:3px; flex:none}
+
+button{cursor:pointer; border:none; border-radius:10px; font-weight:600; transition:filter .15s, background .15s}
+button:active{filter:brightness(.94)}
+button:disabled{opacity:.45; cursor:not-allowed}
+.btn{padding:10px 14px; background:#eef2f7; color:var(--ink); font-size:14px; display:inline-flex; align-items:center; justify-content:center; gap:7px}
+.btn:hover:not(:disabled){background:#e2e8f0}
+.btn-primary{background:var(--brand); color:#fff}
+.btn-primary:hover:not(:disabled){background:#0d6b63}
+.btn-gmaps{background:#1a73e8; color:#fff}
+.btn-gmaps:hover:not(:disabled){background:#1765cc}
+.btn-block{width:100%}
+.btn-lg{padding:13px 16px; font-size:15px}
+.btn-sm{padding:7px 11px; font-size:12.5px; border-radius:8px}
+.btn-row{display:flex; gap:8px; flex-wrap:wrap}
+
+.hint{font-size:12px; color:var(--muted); margin:7px 0 0}
+.hint code{background:#f1f5f9; padding:1px 5px; border-radius:4px; font-size:11.5px}
+.hint b{color:var(--ink)}
+
+.progress{height:7px; background:#e2e8f0; border-radius:999px; overflow:hidden; margin-top:10px}
+.progress>div{height:100%; width:0; background:linear-gradient(90deg,var(--brand),var(--brand2)); transition:width .2s}
+.progress-label{font-size:12px; color:var(--muted); margin-top:6px; display:flex; justify-content:space-between; gap:10px}
+
+.stats{display:grid; grid-template-columns:repeat(3,1fr); gap:9px}
+.stat{background:#f8fafc; border:1px solid var(--line); border-radius:10px; padding:9px 10px; text-align:center}
+.stat .v{font-size:16px; font-weight:700; letter-spacing:-.02em}
+.stat .k{font-size:10.5px; color:var(--muted); margin-top:2px; text-transform:uppercase; letter-spacing:.05em}
+.stat.good .v{color:var(--ok)}
+
+.stops{display:flex; flex-direction:column; gap:7px}
+.stop{display:flex; gap:10px; align-items:flex-start; padding:9px 10px;
+  border:1px solid var(--line); border-radius:11px; background:#fff}
+.stop.dragging{opacity:.45}
+.stop.over{border-color:var(--brand2); box-shadow:0 0 0 2px rgba(20,184,166,.18)}
+.stop .num{flex:none; width:27px; height:27px; border-radius:50%; background:var(--brand); color:#fff;
+  display:flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:700}
+.stop.start .num{background:#111827}
+.stop.gps .num{background:#2563eb}
+.stop .info{flex:1; min-width:0}
+.stop .cp{font-weight:650; font-size:14px}
+.stop .sub{font-size:11.5px; color:var(--muted); margin-top:1px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.stop .tools{display:flex; flex-direction:column; gap:3px; flex:none}
+.iconbtn{width:26px; height:22px; border-radius:6px; background:#f1f5f9; color:var(--muted);
+  display:flex; align-items:center; justify-content:center; font-size:10px; line-height:1; padding:0}
+.iconbtn:hover:not(:disabled){background:#e2e8f0; color:var(--ink)}
+.iconbtn.del:hover{background:#fee2e2; color:var(--bad)}
+.empty{text-align:center; color:var(--muted); font-size:13px; padding:22px 10px}
+
+.legs{display:flex; flex-direction:column; gap:6px; max-height:300px; overflow-y:auto}
+.leg{display:flex; align-items:center; gap:9px; padding:8px 9px; border:1px solid var(--line);
+  border-radius:10px; font-size:12.5px; background:#fff}
+.leg .n{flex:none; width:24px; height:24px; border-radius:6px; background:#eef2f7; color:var(--muted);
+  display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700}
+.leg .txt{flex:1; min-width:0}
+
+.map-ctl{position:absolute; z-index:500; display:flex; gap:6px}
+.map-ctl.tl{top:10px; left:10px}
+.map-ctl.tr{top:10px; right:10px; flex-direction:column}
+.mapbtn{background:rgba(255,255,255,.96); border:1px solid var(--line); border-radius:9px;
+  padding:7px 10px; font-size:12.5px; font-weight:600; box-shadow:0 2px 8px rgba(15,23,42,.12);
+  display:flex; align-items:center; gap:6px; color:var(--ink)}
+.mapbtn:hover:not(:disabled){background:#fff}
+.legend{position:absolute; z-index:500; bottom:12px; left:10px; background:rgba(255,255,255,.95);
+  border:1px solid var(--line); border-radius:9px; padding:7px 10px; font-size:11.5px;
+  box-shadow:0 2px 8px rgba(15,23,42,.12); display:flex; gap:12px; align-items:center}
+.legend i{display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; vertical-align:-1px}
+
+.pin{width:30px; height:30px; border-radius:50% 50% 50% 4px; transform:rotate(45deg);
+  background:var(--brand); border:2.5px solid #fff; box-shadow:0 2px 6px rgba(15,23,42,.35);
+  display:flex; align-items:center; justify-content:center}
+.pin.start{background:#111827}
+.pin.end{background:#b91c1c}
+.pin span{transform:rotate(-45deg); color:#fff; font-size:12px; font-weight:700; line-height:1}
+.leaflet-popup-content{margin:10px 12px; font-size:13px}
+.leaflet-popup-content b{font-size:14px}
+.popup-btn{margin-top:6px; font-size:12px; padding:6px 10px}
+.leaflet-container{font:inherit}
+
+#toast{position:fixed; left:50%; transform:translateX(-50%); bottom:calc(18px + var(--safe-b));
+  background:#0f172a; color:#fff; padding:11px 16px; border-radius:11px; font-size:13.5px;
+  z-index:9999; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s;
+  max-width:calc(100vw - 32px); text-align:center; box-shadow:0 8px 28px rgba(0,0,0,.3)}
+#toast.show{opacity:1; transform:translateX(-50%) translateY(-4px)}
+#toast.err{background:var(--bad)}
+#toast.ok{background:var(--ok)}
+
+@media print{
+  .topbar,.map-wrap,.no-print,#toast,.map-ctl,.legend{display:none !important}
+  .main{display:block}
+  .side{width:100%; border:none}
+  .side-scroll{overflow:visible}
+  .card{box-shadow:none; break-inside:avoid; margin-bottom:10px}
+  body{background:#fff}
+  .legs{max-height:none}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="topbar">
+    <h1>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg>
+      Otimizador de Rotas · Códigos Postais
+    </h1>
+    <p>Códigos postais portugueses → caminho mais curto → Google Maps</p>
+  </div>
+
+  <div class="main">
+
+    <aside class="side">
+      <div class="side-scroll">
+
+        <!-- 1 · Introdução -->
+        <section class="card">
+          <header>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+            1 · Introduzir códigos postais
+          </header>
+          <div class="body">
+            <label class="field">
+              <span>Uma morada por linha — ou várias separadas por vírgula / ponto e vírgula</span>
+              <textarea id="input" spellcheck="false" autocapitalize="off" autocorrect="off"
+                placeholder="Rua Augusta 1, 1100-415 Lisboa&#10;Av. da Liberdade 100, 1250-147 Lisboa&#10;4700-025&#10;4000-065"></textarea>
+            </label>
+            <div class="btn-row" style="margin-bottom:10px">
+              <input type="text" id="manual" inputmode="numeric" placeholder="ou escreva um código postal…"
+                     style="flex:1;min-width:140px">
+              <button class="btn" id="btnAdd">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                Adicionar
+              </button>
+            </div>
+            <div class="progress-label">
+              <span id="countInfo">Nenhum código lido</span>
+              <span id="dupInfo" class="badge warn" style="display:none"></span>
+            </div>
+            <p class="hint">Aceita <code>1000-001</code>, <code>1000001</code> ou <code>1000 001</code>.
+              Se uma linha tiver vários códigos postais, é usado o último. Pode colar directamente uma coluna do Excel.</p>
+          </div>
+        </section>
+
+        <!-- 2 · Opções -->
+        <section class="card">
+          <header>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6 1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            2 · Opções
+          </header>
+          <div class="body">
+            <div class="row2">
+              <label class="field">
+                <span>Otimizar por</span>
+                <select id="optBy">
+                  <option value="dist">Distância</option>
+                  <option value="time">Tempo</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Partida</span>
+                <select id="optStart">
+                  <option value="auto">Automática (melhor)</option>
+                  <option value="custom">Morada indicada (em baixo)</option>
+                  <option value="gps">A minha localização (GPS)</option>
+                  <option value="first">Primeiro da lista</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="subbox">
+              <label class="field">
+                <span>Morada de partida <em class="hint-em">— usado se escolher "Morada indicada" em cima</em></span>
+                <input type="text" id="startInput" autocomplete="off" spellcheck="false"
+                  placeholder="Ex.: Avenida da Liberdade, 1250-147 Lisboa">
+              </label>
+              <div class="btn-row">
+                <button class="btn btn-sm btn-primary" id="btnStartLocate">Localizar e usar como partida</button>
+                <button class="btn btn-sm" id="btnStartClear">Limpar</button>
+              </div>
+              <div class="hint" id="startStatus"></div>
+            </div>
+            <label class="field" style="margin-bottom:4px">
+              <span>Deslocação</span>
+              <select id="optMode">
+                <option value="driving">Carro</option>
+                <option value="bicycling">Bicicleta</option>
+                <option value="walking">A pé</option>
+              </select>
+            </label>
+            <label class="check"><input type="checkbox" id="optRound"><span>Regressar ao ponto de partida (rota circular)</span></label>
+            <label class="check"><input type="checkbox" id="optAvoidTolls"><span>Evitar portagens (carro)</span></label>
+            <label class="check"><input type="checkbox" id="optNavigate" checked><span>Iniciar navegação logo ao abrir a etapa</span></label>
+            <label class="check"><input type="checkbox" id="optGoogleOpt" checked><span>Deixar o Google Maps reotimizar a ordem ao abrir</span></label>
+          </div>
+        </section>
+
+        <!-- 3 · Ação -->
+        <section class="card no-print">
+          <div class="body">
+            <button class="btn btn-primary btn-block btn-lg" id="btnRun">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg>
+              Calcular caminho ótimo
+            </button>
+            <div class="progress" id="prog" style="display:none"><div id="progBar"></div></div>
+            <div class="progress-label" id="progTxt" style="display:none">
+              <span id="progStep"></span><span id="progPct"></span>
+            </div>
+            <div class="btn-row" style="margin-top:10px">
+              <button class="btn btn-sm" id="btnReverse" disabled>Inverter</button>
+              <button class="btn btn-sm" id="btnOptimise" disabled>Reotimizar</button>
+              <button class="btn btn-sm" id="btnCsv" disabled>CSV</button>
+              <button class="btn btn-sm" id="btnPrint" disabled>Imprimir</button>
+              <button class="btn btn-sm" id="btnClear" disabled>Limpar</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4 · Resultado -->
+        <section class="card" id="cardResult" style="display:none">
+          <header>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            3 · Resultado
+            <span class="badge ok" id="solverBadge"></span>
+          </header>
+          <div class="body">
+            <div class="stats">
+              <div class="stat"><div class="v" id="stDist">—</div><div class="k">Distância</div></div>
+              <div class="stat"><div class="v" id="stTime">—</div><div class="k">Tempo</div></div>
+              <div class="stat good"><div class="v" id="stSaved">—</div><div class="k">Poupança</div></div>
+            </div>
+            <p class="hint" id="solverNote" style="margin-bottom:0"></p>
+          </div>
+        </section>
+
+        <!-- 5 · Google Maps -->
+        <section class="card no-print" id="cardGM" style="display:none">
+          <header>
+            <svg width="15" height="15" viewBox="0 0 24 24"><path fill="#EA4335" d="M12 2C8.1 2 5 5.1 5 9c0 5.2 7 13 7 13s7-7.8 7-13c0-3.9-3.1-7-7-7z"/><path fill="#4285F4" d="M12 2a7 7 0 0 0-6.7 9L12 22l6.7-11A7 7 0 0 0 12 2z" opacity=".45"/></svg>
+            4 · Enviar para o Google Maps
+          </header>
+          <div class="body">
+            <button class="btn btn-gmaps btn-block btn-lg" id="btnGM"></button>
+            <div class="btn-row" style="margin-top:8px">
+              <button class="btn btn-sm" id="btnCopy">Copiar ligação</button>
+              <button class="btn btn-sm" id="btnListAll">Ver todos os pontos</button>
+            </div>
+            <p class="hint" id="gmNote"></p>
+          </div>
+        </section>
+
+        <!-- 6 · Etapas -->
+        <section class="card" id="cardLegs" style="display:none">
+          <header>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+            5 · Etapas da rota
+            <span class="badge info" id="legBadge"></span>
+          </header>
+          <div class="body">
+            <div class="legs" id="legs"></div>
+            <p class="hint">Abra as etapas por ordem — cada uma é um trajecto de 2 pontos, pelo que o Google
+              respeita sempre a ordem calculada. Toque no número para recentrar o mapa.</p>
+          </div>
+        </section>
+
+        <!-- 7 · Ordem -->
+        <section class="card" id="cardStops" style="display:none">
+          <header>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            Ordem da rota
+            <span class="badge" id="stopBadge"></span>
+          </header>
+          <div class="body">
+            <div class="stops" id="stops"></div>
+            <p class="hint">Arraste (ou use ▲ ▼) para alterar a ordem — a distância é recalculada de imediato.</p>
+          </div>
+        </section>
+
+        <p class="hint" style="text-align:center;padding:4px 0 10px">
+          Endereços: OpenStreetMap / Nominatim · Rotas e distâncias: OSRM<br>
+          Precisa de ligação à Internet para localizar os códigos postais.
+        </p>
+      </div>
+    </aside>
+
+    <!-- MAPA -->
+    <div class="map-wrap">
+      <div id="map"></div>
+
+      <div class="map-ctl tl">
+        <button class="mapbtn" id="btnFit">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+          Ver tudo
+        </button>
+      </div>
+
+      <div class="map-ctl tr">
+        <button class="mapbtn" id="btnLayer">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M1 6l9-3 9 3-9 3z"/><path d="M3 12l9 3 9-3M3 18l9 3 9-3"/></svg>
+          <span id="layerName">Mapa</span>
+        </button>
+        <button class="mapbtn" id="btnLocate">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+          GPS
+        </button>
+      </div>
+
+      <div class="legend" id="legend" style="display:none">
+        <span><i style="background:#111827"></i>Partida</span>
+        <span><i style="background:#b91c1c"></i>Fim</span>
+        <span><i style="background:#0f766e"></i>Paragem</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script>
+/* ===========================================================================
+   Otimizador de Rotas por Códigos Postais (Portugal)
+     · Endereços  : Nominatim / OpenStreetMap
+     · Rotas      : OSRM (router.project-osrm.org)
+     · Optimização: Held-Karp exato até 16 paragens;
+                    Nearest-Neighbour multi-arranque + 2-opt + Or-opt acima disso
+     · Saída      : Google Maps (URL scheme)
+   =========================================================================== */
+'use strict';
+
+/* ------------------------------------------------------------------ consts */
+const NOMINATIM    = 'https://nominatim.openstreetmap.org';
+const PHOTON       = 'https://photon.komoot.io';       // reserva, se o OSM recusar
+const OSRM         = 'https://router.project-osrm.org';
+const CACHE_KEY    = 'otimizador-rotas-v1';
+const EXACT_MAX    = 16;   // limite para o algoritmo exato (Held-Karp)
+const GM_MAX_STOPS = 8;    // limite seguro de paragens por URL do Google Maps
+const LAYER_NAMES  = ['Mapa', 'Cidade', 'Satélite'];
+
+/* ------------------------------------------------------------------- state */
+const state = {
+  baseStops : [],   // paragens geocodificadas, pela ordem de leitura
+  stops     : [],   // paragens actuais (pode incluir a origem GPS)
+  order     : [],   // array de uid, na ordem da rota
+  matrix    : null, // {dist, dur} indexado pela posição em state.stops
+  matrixProfile: '', // perfil OSRM com que a matriz foi calculada
+  legInfo   : [],   // [{km, min}] por par consecutiva
+  geometry  : null, // array de arrays de [lat,lng] por par
+  totalM    : 0,
+  totalT    : 0,
+  exact     : false,
+  solved    : false,
+  gps       : null, // {lat,lng}
+  startPoint: null, // partida indicada à mão: {lat,lng,label,raw}
+  layer     : 0,
+  profileLimited: false,  // o servidor público de rotas só tem dados de carro
+};
+
+/* ----------------------------------------------------------------- helpers */
+const $ = s => document.querySelector(s);
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+let toastTimer = null;
+function toast(msg, kind){
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = 'show ' + (kind || '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = kind || ''; }, kind === 'err' ? 5200 : 3600);
+}
+function fmtKm(m){
+  if (m == null || !isFinite(m)) return '—';
+  if (m < 1000) return Math.round(m) + ' m';
+  return (m / 1000).toFixed(m < 10000 ? 1 : 0).replace('.', ',') + ' km';
+}
+function fmtMin(s){
+  if (s == null || !isFinite(s)) return '—';
+  const m = Math.round(s / 60);
+  return m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0');
+}
+function uid(){ return Math.random().toString(36).slice(2, 10); }
+
+async function fetchJSON(url, opts){
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), (opts && opts.timeout) || 15000);
+  try {
+    const r = await fetch(url, { signal: ctl.signal });
+    if (r.status === 403 || r.status === 429){
+      const e = new Error('limite de pedidos'); e.limited = true; e.status = r.status; throw e;
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } finally { clearTimeout(timer); }
+}
+
+/* ------------------------------------------------------ extração de CP */
+const CP_RE = /\b(\d{4})\s*[-‐-―\s]?\s*(\d{3})\b/g;
+
+/** Todos os códigos postais presentes num texto livre. */
+function extractCPs(text){
+  const out = [];
+  CP_RE.lastIndex = 0;
+  let m;
+  while ((m = CP_RE.exec(text)) !== null) out.push(m[1] + '-' + m[2]);
+  return out;
+}
+
+/** Lê o campo de entrada. Devolve {cps:[{cp, raw}], noCP:[].} */
+function readInput(raw){
+  const res = { cps: [], noCP: [] };
+  raw.split(/\r?\n/).forEach(line => {
+    const t = line.trim();
+    if (!t) return;
+    const found = extractCPs(t);
+    if (!found.length){ res.noCP.push(t); return; }
+    const pure = t.match(/^(\d{4})\s*[-‐-―\s]?\s*(\d{3})$/);   // linha = só o CP
+    res.cps.push({ cp: found[found.length - 1], raw: pure ? pure[1] + '-' + pure[2] : t });
+  });
+  return res;
+}
+
+/* --------------------------------------------------------------- geocoding */
+let geoCache = {};
+try { geoCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); } catch(e){ geoCache = {}; }
+function cacheSet(cp, data){
+  geoCache[cp] = data;
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(geoCache)); } catch(e){ /* quota excedida */ }
+}
+
+/* fila com limite de ritmo — o Nominatim aceita 1 pedido por segundo */
+const queue = {
+  jobs: [], running: false, last: 0, gap: 1050,
+  push(fn){
+    return new Promise((res, rej) => { this.jobs.push({ fn, res, rej }); this.run(); });
+  },
+  async run(){
+    if (this.running) return;
+    this.running = true;
+    while (this.jobs.length){
+      const wait = this.gap - (Date.now() - this.last);
+      if (wait > 0) await new Promise(r => setTimeout(r, wait));
+      this.last = Date.now();
+      const job = this.jobs.shift();
+      try { job.res(await job.fn()); } catch(e){ job.rej(e); }
+    }
+    this.running = false;
+  }
+};
+
+const isPT   = r => !!r.address && r.address.country_code === 'pt';
+const isPost = r => r.type === 'postcode' || r.addresstype === 'postcode';
+
+/* serviços de geocodificação — o OSM tem política de uso apertada, por isso
+   passamos automaticamente para o Photon se o OSM recusar o pedido */
+const providers = {
+  nominatim: { name: 'OpenStreetMap', limited: false },
+  photon:    { name: 'Photon',        limited: false },
+};
+
+function markLimited(key){
+  if (providers[key].limited) return;
+  providers[key].limited = true;
+  toast('O serviço ' + providers[key].name + ' recusou o pedido (limite de uso). '
+      + 'A passar para o serviço alternativo.', 'err');
+}
+
+/** Pesquisa no OSM / Nominatim. Devolve [] se o serviço estiver bloqueado. */
+function nmSearch(q, limit){
+  if (providers.nominatim.limited) return Promise.resolve([]);
+  return queue.push(async () => {
+    if (providers.nominatim.limited) return [];
+    const url = NOMINATIM + '/search?format=jsonv2&limit=' + limit +
+                '&addressdetails=1&countrycodes=pt&q=' + encodeURIComponent(q);
+    try { const r = await fetchJSON(url); return Array.isArray(r) ? r : []; }
+    catch(e){ if (e.limited) markLimited('nominatim'); return []; }
+  });
+}
+
+/** Converte um resultado do Photon para o mesmo formato do Nominatim. */
+function photonToLike(f){
+  const p = (f && f.properties) || {};
+  const c = f && f.geometry && f.geometry.coordinates;
+  if (!c) return null;
+  if (p.countrycode && p.countrycode.toUpperCase() !== 'PT') return null;
+  const name = p.name || '';
+  const postcode = p.postcode || (/^\d{4}-\d{3}$/.test(name) ? name : '');
+  const isPost = p.osm_value === 'postcode' || !!postcode;
+  return {
+    lat: c[1], lon: c[0],
+    type: isPost ? 'postcode' : (p.osm_key || 'place'),
+    addresstype: isPost ? 'postcode' : undefined,
+    display_name: [name, p.street, p.district, p.city, p.state, p.country].filter(Boolean).join(', '),
+    address: {
+      country_code: 'pt', postcode, road: p.street,
+      suburb: p.district, town: p.city, city: p.city,
+      village: p.county, state: p.state
+    },
+  };
+}
+
+/** Pesquisa no Photon (serviço alternativo, sem política de uso tão restritiva). */
+function photonSearch(q){
+  if (providers.photon.limited) return Promise.resolve([]);
+  return queue.push(async () => {
+    if (providers.photon.limited) return [];
+    // o viés para o centro de Portugal evita resultados fora do país
+    const url = PHOTON + '/api/?limit=6&lang=default&lat=39.5&lon=-8&q=' + encodeURIComponent(q);
+    try {
+      const j = await fetchJSON(url);
+      return (j && j.features ? j.features : []).map(photonToLike).filter(Boolean);
+    } catch(e){ if (e.limited) markLimited('photon'); return []; }
+  });
+}
+
+function toRecord(cp, hit, level){
+  const a = hit.address || {};
+  const parts = [a.postcode || cp, a.road, a.suburb || a.neighbourhood,
+                 a.town || a.city || a.village || a.municipality].filter(Boolean);
+  // evita repetir a localidade quando o bairro já a contém ("Braga (…)" + "Braga")
+  const uniq = parts.filter((p, i) => !parts.some((o, j) =>
+    j !== i && o !== p && o.toLowerCase().includes(p.toLowerCase())));
+  const label = uniq.join(', ') || hit.display_name || cp;
+  return { lat: +hit.lat, lng: +hit.lon, label, level };
+}
+
+/**
+ * Geocodifica um código postal português, usando dois serviços para não
+ * depender de um só:
+ *   exact    — centroide desse código postal
+ *   locality — centroide dos 4 primeiros dígitos
+ *   approx   — resultado genérico (pode estar alguns km afastado)
+ */
+async function geocodeCP(cp){
+  if (geoCache[cp]){
+    return geoCache[cp].fail ? null : geoCache[cp];
+  }
+
+  const prefix = cp.slice(0, 4);
+  let full = [], pre = [];
+
+  // 1) centroide exato no OSM
+  full = await nmSearch(cp + ', Portugal', 5);
+  let hit = full.find(r => isPT(r) && isPost(r));
+  if (hit){ const rec = toRecord(cp, hit, 'exact'); cacheSet(cp, rec); return rec; }
+
+  // 2) centroide dos 4 dígitos no OSM — muito mais fiável que um POI qualquer
+  if (!providers.nominatim.limited){
+    pre = await nmSearch(prefix + ', Portugal', 5);
+    hit = pre.find(r => isPT(r) && isPost(r));
+    if (hit){ const rec = toRecord(prefix, hit, 'locality'); cacheSet(cp, rec); return rec; }
+  }
+
+  // 3) serviço alternativo — centroide exato
+  const alt = await photonSearch(cp);
+  hit = alt.find(r => isPT(r) && isPost(r));
+  if (hit){ const rec = toRecord(cp, hit, 'exact'); cacheSet(cp, rec); return rec; }
+
+  // 4) serviço alternativo — centroide dos 4 dígitos
+  const altPre = await photonSearch(prefix);
+  hit = altPre.find(r => isPT(r) && isPost(r));
+  if (hit){ const rec = toRecord(prefix, hit, 'locality'); cacheSet(cp, rec); return rec; }
+
+  // 5) último recurso: qualquer resultado português
+  hit = full.find(r => isPT(r)) || pre.find(r => isPT(r)) || alt.find(r => isPT(r));
+  if (hit){ const rec = toRecord(cp, hit, 'approx'); cacheSet(cp, rec); return rec; }
+
+  cacheSet(cp, { fail: true });
+  return null;
+}
+
+/**
+ * Geocodifica uma morada livre em Portugal (endereço completo, nome de rua,
+ * localidade ou código postal). Usado para o ponto de partida.
+ */
+async function geocodeAddress(text){
+  const q = String(text || '').trim();
+  if (!q) return null;
+  const key = 'addr::' + q.toLowerCase();
+  if (geoCache[key]) return geoCache[key].fail ? null : geoCache[key];
+
+  // se for um código postal, reutiliza a rotina com fallbacks dos 4 dígitos
+  const cps = extractCPs(q);
+  if (cps.length){
+    const rec = await geocodeCP(cps[cps.length - 1]);
+    if (rec){ cacheSet(key, rec); return rec; }
+  }
+
+  const res = await nmSearch(q + ', Portugal', 6);
+  const hit = res.find(r => isPT(r) && isPost(r)) || res.find(r => isPT(r));
+  if (!hit){ cacheSet(key, { fail: true }); return null; }
+
+  const rec = toRecord(q, hit, isPost(hit) ? 'exact' : 'approx');
+  cacheSet(key, rec);
+  return rec;
+}
+
+/* --------------------------------------------------------------- OSRM */
+function osrmProfile(){
+  return { driving: 'driving', bicycling: 'bike', walking: 'foot' }[$('#optMode').value];
+}
+
+function haversine(a, b){
+  const R = 6371000, toRad = x => x * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+/** Matriz de distâncias/durações. Cai para distâncias geodésicas se falhar. */
+async function buildMatrix(coords){
+  const n = coords.length;
+  const dist = Array.from({ length: n }, () => new Array(n).fill(null));
+  const dur  = Array.from({ length: n }, () => new Array(n).fill(null));
+  if (n === 1) return { dist, dur, approx: false, missing: 0 };
+
+  const prof = osrmProfile();
+  const CH = 50;                          // 50 × 50 por pedido
+  let ok = false;
+
+  for (let s0 = 0; s0 < n; s0 += CH){
+    const sN = Math.min(n, s0 + CH);
+    const src = coords.slice(s0, sN).map(c => c.lng.toFixed(6) + ',' + c.lat.toFixed(6)).join(';');
+    for (let d0 = 0; d0 < n; d0 += CH){
+      const dN = Math.min(n, d0 + CH);
+      const dst = coords.slice(d0, dN).map(c => c.lng.toFixed(6) + ',' + c.lat.toFixed(6)).join(';');
+      let j = null;
+      try {
+        j = await fetchJSON(`${OSRM}/table/v1/${prof}/${src};${dst}?annotations=duration,distance`,
+                            { timeout: 25000 });
+      } catch(e){
+        try { j = await fetchJSON(`${OSRM}/table/v1/${prof}/${src};${dst}`, { timeout: 25000 }); }
+        catch(e2){ j = null; }
+      }
+      if (!j || j.code !== 'Ok') continue;
+      ok = true;
+      const D = j.distances || [], T = j.durations || [];
+      for (let i = 0; i < sN - s0; i++)
+        for (let k = 0; k < dN - d0; k++){
+          dist[s0 + i][d0 + k] = D[i] ? D[i][k] : null;
+          dur [s0 + i][d0 + k] = T[i] ? T[i][k] : null;
+        }
+    }
+  }
+
+  let missing = 0;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++){
+    if (i === j){ dist[i][j] = 0; dur[i][j] = 0; continue; }
+    if (dist[i][j] == null){ dist[i][j] = haversine(coords[i], coords[j]) * 1.35; missing++; }
+    if (dur[i][j] == null)   dur[i][j]  = dist[i][j] / 12.5;
+  }
+  return { dist, dur, approx: !ok || missing > 0, missing };
+}
+
+/* ===================================================== otimização (TSP) */
+function symMatrix(M){
+  const n = M.length, S = M.map(r => r.slice());
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++)
+      if (M[j][i] != null && (S[i][j] == null || M[j][i] < S[i][j])) S[i][j] = M[j][i];
+  return S;
+}
+function pathCost(path, w){
+  let c = 0;
+  for (let i = 1; i < path.length; i++) c += w[path[i - 1]][path[i]];
+  return c;
+}
+
+/** Held-Karp: caminho aberto exato (não volta à origem). */
+function heldKarp(w, start){
+  const n = w.length, ALL = 1 << n;
+  const dp  = new Float64Array(ALL * n).fill(Infinity);
+  const par = new Int32Array(ALL * n).fill(-1);
+  dp[(1 << start) * n + start] = 0;
+
+  for (let mask = 0; mask < ALL; mask++){
+    if (!(mask & (1 << start))) continue;
+    for (let last = 0; last < n; last++){
+      const cur = dp[mask * n + last];
+      if (!isFinite(cur)) continue;
+      const row = w[last];
+      for (let nx = 0; nx < n; nx++){
+        if (mask & (1 << nx)) continue;
+        const nm = mask | (1 << nx);
+        const id = nm * n + nx;
+        const nd = cur + row[nx];
+        if (nd < dp[id] - 1e-9){ dp[id] = nd; par[id] = last; }
+      }
+    }
+  }
+
+  const full = ALL - 1;
+  let best = Infinity, bl = -1;
+  for (let i = 0; i < n; i++){
+    const v = dp[full * n + i];
+    if (v < best){ best = v; bl = i; }
+  }
+  const out = [];
+  let mask = full, last = bl;
+  while (last !== -1){ out.unshift(last); const p = par[mask * n + last]; mask ^= (1 << last); last = p; }
+  return { order: out, cost: best };
+}
+
+/** 2-opt mantendo fixo o primeiro elemento. */
+function twoOpt(path, w){
+  const n = path.length;
+  let improved = true, guard = 0;
+  while (improved && guard++ < 400){
+    improved = false;
+    for (let i = 1; i < n - 1; i++)
+      for (let j = i + 1; j < n; j++){
+        const a = path[i - 1], b = path[i], c = path[j], d = (j < n - 1) ? path[j + 1] : null;
+        let delta = w[a][c];
+        if (d !== null) delta += w[b][d];
+        delta -= w[a][b];
+        if (d !== null) delta -= w[c][d];
+        if (delta < -1e-9){
+          let lo = i, hi = j;
+          while (lo < hi){ const t = path[lo]; path[lo] = path[hi]; path[hi] = t; lo++; hi--; }
+          improved = true;
+        }
+      }
+  }
+  return path;
+}
+
+/** Or-opt: mover segmentos de 1 a 3 nós. */
+function orOpt(path, w){
+  let improved = true, guard = 0;
+  while (improved && guard++ < 400){
+    improved = false;
+    const n = path.length;
+    for (let len = 1; len <= 3; len++)
+      for (let i = 1; i <= n - len; i++){
+        const seg    = path.slice(i, i + len);
+        const prev   = path[i - 1];
+        const after  = (i + len < n) ? path[i + len] : null;
+        const remove = w[prev][seg[0]] + (after !== null ? w[seg[len - 1]][after] : 0);
+        const saved  = remove - (after !== null ? w[prev][after] : 0);
+        if (saved <= 1e-9) continue;
+        const rest = path.slice(0, i).concat(path.slice(i + len));
+        const m = rest.length;
+        let bestP = -1, bestAdd = Infinity;
+        for (let p = 1; p <= m; p++){
+          const a = rest[p - 1], b = (p < m) ? rest[p] : null;
+          let add = w[a][seg[0]];
+          if (b !== null) add += w[seg[len - 1]][b] - w[a][b];
+          if (add < bestAdd - 1e-9){ bestAdd = add; bestP = p; }
+        }
+        if (bestP > -1 && bestAdd < saved - 1e-9){
+          path = rest.slice(0, bestP).concat(seg, rest.slice(bestP));
+          improved = true;
+        }
+      }
+  }
+  return path;
+}
+
+/** Nearest-Neighbour multi-arranque + 2-opt + Or-opt. */
+function heuristic(w, start){
+  const n = w.length;
+  const starts = n <= 40 ? Array.from({ length: n }, (_, i) => i) : [start, 0, n - 1];
+  let best = null, bestCost = Infinity;
+  for (const s of starts){
+    const seen = new Array(n).fill(false);
+    const p = [s]; seen[s] = true;
+    while (p.length < n){
+      let bj = -1, bd = Infinity;
+      const last = p[p.length - 1];
+      for (let j = 0; j < n; j++) if (!seen[j] && w[last][j] < bd){ bd = w[last][j]; bj = j; }
+      if (bj < 0) break;
+      seen[bj] = true; p.push(bj);
+    }
+    if (p.length !== n) continue;
+    twoOpt(p, w); orOpt(p, w);
+    const c = pathCost(p, w);
+    if (c < bestCost){ bestCost = c; best = p.slice(); }
+  }
+  return { order: best || Array.from({ length: n }, (_, i) => i), cost: bestCost };
+}
+
+/**
+ * Resolve o TSP.  `start` fixa a primeira paragem; `tryAllStarts` testa todos
+ * os arranques possíveis (usado no modo "partida automática").
+ */
+function solveTSP(M, start, tryAllStarts){
+  const n = M.length;
+  if (n <= 1) return { order: [0], exact: true };
+  const W = symMatrix(M);
+
+  if (n <= EXACT_MAX){
+    if (!tryAllStarts) return { order: heldKarp(W, start).order, exact: true };
+    let bestOrder = heldKarp(W, start).order, bestCost = Infinity;
+    for (let s = 0; s < n; s++){
+      const r = heldKarp(W, s);
+      const c = pathCost(r.order, W);
+      if (c < bestCost - 1e-9){ bestCost = c; bestOrder = r.order; }
+    }
+    return { order: bestOrder, exact: true };
+  }
+
+  return { order: heuristic(W, start).order, exact: false };
+}
+
+/* --------------------------------------------------------- Google Maps */
+function placeOf(s){
+  if (s.synthetic) return s.lat + ',' + s.lng;
+  const rest = (s.label || '').split(',').slice(1).join(',').trim();
+  return s.cp + (rest ? ', ' + rest : '') + ', Portugal';
+}
+
+function gmURL(seq, navigate){
+  if (!seq.length) return '';
+  const wps = seq.slice(1, -1).map(placeOf);
+  const u = new URL('https://www.google.com/maps/dir/');
+  u.searchParams.set('api', '1');
+  u.searchParams.set('origin', placeOf(seq[0]));
+  u.searchParams.set('destination', placeOf(seq[seq.length - 1]));
+  if (wps.length) u.searchParams.set('waypoints', wps.join('|'));
+  u.searchParams.set('travelmode', $('#optMode').value);
+  if ($('#optMode').value === 'driving' && $('#optAvoidTolls').checked) u.searchParams.set('avoid', 'tolls');
+  if ($('#optRound').checked) u.searchParams.set('roundtrip', 'true');
+  if (wps.length) u.searchParams.set('waypoints_optimize', $('#optGoogleOpt').checked ? 'true' : 'false');
+  if (navigate && $('#optNavigate').checked) u.searchParams.set('dir_action', 'navigate');
+  return u.toString();
+}
+
+/** Divide a sequência em blocos que cabem no limite do URL. */
+function gmChunks(seq){
+  if (seq.length <= GM_MAX_STOPS) return [seq];
+  const out = [];
+  let i = 0;
+  while (i < seq.length - 1){
+    const chunk = seq.slice(i, Math.min(i + GM_MAX_STOPS, seq.length));
+    out.push(chunk);
+    i += chunk.length - 1;              // cada bloco começa onde o anterior acaba
+  }
+  return out;
+}
+
+/** URL "mostrar todos os pontos" — suporta muitas paragens. */
+function gmAllPoints(seq){
+  const u = new URL('https://www.google.com/maps/search/');
+  u.searchParams.set('api', '1');
+  u.searchParams.set('query', seq.map(s => s.lat + ',' + s.lng).join('|'));
+  return u.toString();
+}
+
+function openGM(seq, navigate){
+  if (seq && seq.length) window.open(gmURL(seq, navigate), '_blank', 'noopener');
+}
+
+/* ================================================================== MAPA */
+const map = L.map('map', { zoomControl: true, tap: false }).setView([39.5, -8], 6);
+
+const BASE_LAYERS = [
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { maxZoom: 19, attribution: '&copy; OpenStreetMap' }),
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    { maxZoom: 20, subdomains: 'abcd', attribution: '&copy; OpenStreetMap &copy; CARTO' }),
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { maxZoom: 19, attribution: '&copy; Esri, Maxar, Earthstar Geographics' }),
+];
+BASE_LAYERS[0].addTo(map);
+
+let cluster = null, lineLayer = null, gpsMarker = null, closeMarker = null;
+
+function clearMapLayers(){
+  [cluster, lineLayer, gpsMarker, closeMarker].forEach(l => { if (l) map.removeLayer(l); });
+  cluster = lineLayer = gpsMarker = closeMarker = null;
+}
+
+function makePin(i, kind){
+  const cls = kind ? 'pin ' + kind : 'pin';
+  return L.divIcon({
+    className: '',
+    html: `<div class="${cls}"><span>${i + 1}</span></div>`,
+    iconSize: [30, 30], iconAnchor: [15, 28], popupAnchor: [0, -26]
+  });
+}
+
+function levelBadge(s){
+  if (s.synthetic) return '<span class="badge info">partida</span>';
+  if (s.level === 'exact') return '';
+  if (s.level === 'locality') return '<span class="badge warn">localidade</span>';
+  return '<span class="badge bad">aproximado</span>';
+}
+
+function renderMap(){
+  clearMapLayers();
+  if (!state.stops.length) return;
+
+  cluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 48, spiderfyOnMaxZoom: true });
+  const bounds = [];
+  const n = state.order.length;
+
+  state.order.forEach((u, i) => {
+    const s = state.stops.find(x => x.uid === u);
+    if (!s || s.lat == null) return;
+    bounds.push([s.lat, s.lng]);
+    const kind = i === 0 ? 'start' : (i === n - 1 && !$('#optRound').checked) ? 'end' : '';
+    const m = L.marker([s.lat, s.lng], { icon: makePin(i, kind) });
+    m.bindPopup(
+      `<b>${esc(s.synthetic ? (s.startTitle || 'Partida') : s.cp)}</b> ${levelBadge(s)}` +
+      `<br><span style="color:#64748b;font-size:12px">${esc(s.label || '')}</span>` +
+      `<div style="margin-top:7px"><a class="btn btn-sm popup-btn" target="_blank" rel="noopener" href="${
+        'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(placeOf(s))}">Ver no Google Maps</a></div>`
+    );
+    m.on('click', () => highlightStop(u));
+    cluster.addLayer(m);
+  });
+  map.addLayer(cluster);
+
+  // traçado da rota
+  const path = [];
+  state.order.forEach((u, i) => {
+    const s = state.stops.find(x => x.uid === u);
+    if (!s || s.lat == null) return;
+    const seg = state.geometry[i - 1];
+    if (i > 0 && seg && seg.length) seg.forEach(p => path.push(p));
+    path.push([s.lat, s.lng]);
+  });
+
+  if ($('#optRound').checked && path.length > 1){
+    path.push(path[0]);                                   // fecha o ciclo
+    closeMarker = L.circleMarker(path[0], {
+      radius: 8, color: '#0f766e', weight: 3, fillColor: '#fff', fillOpacity: 1
+    }).addTo(map);
+  }
+  if (path.length > 1){
+    lineLayer = L.polyline(path, {
+      color: '#0f766e', weight: 4, opacity: .75, lineJoin: 'round'
+    }).addTo(map);
+  }
+
+  if (state.gps && state.stops.some(s => s.synthetic)) return;   // já representada
+  if (state.gps){
+    gpsMarker = L.marker([state.gps.lat, state.gps.lng], {
+      icon: L.divIcon({
+        className: '',
+        html: '<div style="width:18px;height:18px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.4)"></div>',
+        iconSize: [18, 18], iconAnchor: [9, 9]
+      })
+    }).addTo(map).bindPopup('<b>A sua localização</b>');
+  }
+
+  if (bounds.length) map.fitBounds(bounds, { padding: [45, 45], maxZoom: 15 });
+  $('#legend').style.display = bounds.length ? '' : 'none';
+}
+
+/* ========================================================== RENDER LISTA */
+function highlightStop(u){
+  const el = document.querySelector(`.stop[data-uid="${u}"]`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.animate([{ background: '#ccfbf1' }, { background: '#fff' }], { duration: 1400 });
+}
+
+function renderStops(){
+  const box = $('#stops');
+  if (!state.stops.length){
+    box.innerHTML = '<div class="empty">Ainda não há paragens.</div>';
+    $('#stopBadge').textContent = '';
+    return;
+  }
+  box.innerHTML = state.order.map((u, i) => {
+    const s = state.stops.find(x => x.uid === u);
+    if (!s) return '';
+    const leg = state.legInfo[i - 1];
+    const legTxt = leg ? ` · ${fmtKm(leg.km * 1000)} · ${fmtMin(leg.min * 60)}` : '';
+    return `<div class="stop ${s.synthetic ? 'gps' : i === 0 ? 'start' : ''}" data-uid="${s.uid}" draggable="true">
+      <div class="num">${i + 1}</div>
+      <div class="info">
+        <div class="cp">${esc(s.synthetic ? (s.startTitle || 'Partida') : s.cp)} ${levelBadge(s)}</div>
+        <div class="sub">${esc(s.label || s.raw || '')}${legTxt}</div>
+      </div>
+      <div class="tools">
+        <button class="iconbtn" data-up="${i}"   ${i === 0 ? 'disabled' : ''} title="Subir">&#9650;</button>
+        <button class="iconbtn" data-down="${i}" ${i === state.order.length - 1 ? 'disabled' : ''} title="Descer">&#9660;</button>
+        <button class="iconbtn del" data-del="${s.uid}" title="Remover">&#10005;</button>
+      </div>
+    </div>`;
+  }).join('');
+  $('#stopBadge').textContent = state.stops.length + ' paragem' + (state.stops.length > 1 ? 's' : '');
+}
+
+/* ========================================================= RENDER ETAPAS */
+function renderLegs(){
+  const seq = currentSeq();
+  const card = $('#cardLegs');
+  if (seq.length < 2){ card.style.display = 'none'; return; }
+
+  const chunks = gmChunks(seq);
+  card.style.display = '';
+  $('#legBadge').textContent = chunks.length === 1
+    ? '1 trajecto'
+    : chunks.length + ' trajectos';
+
+  const box = $('#legs');
+  if (chunks.length === 1){
+    box.innerHTML = `<div class="leg">
+      <div class="n">&#8226;</div>
+      <div class="txt"><b>Rota completa</b><br><span style="color:#64748b">${seq.length} paragens num só trajecto</span></div>
+      <button class="btn btn-sm" data-leg="0">Abrir</button>
+    </div>`;
+    return;
+  }
+
+  box.innerHTML = chunks.map((c, i) => {
+    const km = c.reduce((a, s, k) => k ? a + (state.legInfo[seq.indexOf(c[k - 1])] ? state.legInfo[seq.indexOf(c[k - 1])].km : 0) : a, 0);
+    return `<div class="leg">
+      <div class="n">${i + 1}</div>
+      <div class="txt">
+        <b>${esc(c[0].synthetic ? (c[0].startTitle || 'Partida') : c[0].cp)}</b> &rarr; <b>${esc(c[c.length - 1].cp)}</b>
+        ${km ? `<br><span style="color:#64748b">${fmtKm(km * 1000)} · ${c.length} paragens</span>` : ''}
+        ${i ? '<br><span style="color:#94a3b8">começa onde a anterior termina</span>' : ''}
+      </div>
+      <button class="btn btn-sm" data-leg="${i}">Abrir</button>
+    </div>`;
+  }).join('');
+}
+
+/* =========================================================== ESTATÍSTICAS */
+function idxOf(u){ return state.stops.findIndex(s => s.uid === u); }
+function currentSeq(){ return state.order.map(u => state.stops.find(s => s.uid === u)).filter(Boolean); }
+
+function totalsFor(idx){
+  let m = 0, t = 0;
+  for (let i = 1; i < idx.length; i++){
+    m += state.matrix.dist[idx[i - 1]][idx[i]] || 0;
+    t += state.matrix.dur [idx[i - 1]][idx[i]] || 0;
+  }
+  return { m, t };
+}
+
+function renderStats(){
+  if (!state.matrix || state.stops.length < 2){
+    $('#stDist').textContent = $('#stTime').textContent = $('#stSaved').textContent = '—';
+    return;
+  }
+  const idx = state.order.map(idxOf);
+  const total = totalsFor(idx);
+  state.totalM = total.m;
+  state.totalT = total.t;
+
+  // comparação com a ordem em que foram introduzidos
+  const baseIdx = state.stops.map((_, i) => i);
+  const base = totalsFor(baseIdx);
+
+  $('#stDist').textContent = fmtKm(total.m);
+  $('#stTime').textContent = fmtMin(total.t);
+
+  const savedM = base.m - total.m, savedT = base.t - total.t;
+  const pct = base.m > 0 ? Math.round((savedM / base.m) * 100) : 0;
+  $('#stSaved').textContent = pct > 0 ? pct + '%' : '0%';
+  state.savedM = savedM;
+  state.savedT = savedT;
+
+  const notes = [];
+  notes.push(state.exact
+    ? 'Caminho &#243;timo garantido (algoritmo exato).'
+    : 'Caminho muito pr&#243;ximo do &#243;timo (heur&#237;stica 2-opt/Or-opt) &#8212; use como refer&#234;ncia.');
+  if (pct > 0) notes.push(`Poupa ${fmtKm(savedM)} e ${fmtMin(savedT)} face &#224; ordem de introdu&#231;&#227;o.`);
+  if (state.matrix.approx) notes.push('Algumas liga&#231;&#227;es n&#227;o foram calculadas &#8212; dist&#226;ncias estimadas.');
+  const lowFid = state.stops.filter(s => s.level && s.level !== 'exact').length;
+  if (lowFid) notes.push(lowFid === 1
+    ? '1 paragem &#233; s&#243; um centroide de localidade &#8212; confirme no mapa.'
+    : `${lowFid} paragens s&#227;o centroides de localidade &#8212; confirme no mapa.`);
+  if (state.profileLimited) notes.push('As liga&#231;&#227;es do mapa usam o perfil de carro, porque o servidor p&#250;blico de rotas s&#243; tem dados de conduction &#8212; a liga&#231;&#227;o enviada para o Google Maps usa o modo escolhido.');
+  const limited = Object.keys(providers).filter(k => providers[k].limited)
+                        .map(k => providers[k].name);
+  if (limited.length) notes.push('Servi&#231;o(s) de endere&#231;os com limite de pedidos: '
+    + limited.join(', ') + '. As coordenadas podem estar menos precisas.');
+  $('#solverNote').innerHTML = notes.join(' ');
+  $('#solverBadge').textContent = state.exact ? 'ótimo' : 'quase ótimo';
+}
+
+/* ============================================================== PIPELINE */
+async function run(){
+  const parsed = readInput($('#input').value);
+
+  const manual = $('#manual').value.trim();
+  if (manual){
+    const f = extractCPs(manual);
+    if (f.length) parsed.cps.push({ cp: f[f.length - 1], raw: manual });
+    else toast('Código postal inválido: ' + manual, 'err');
+    $('#manual').value = '';
+  }
+
+  const uniq = [], seen = new Set();
+  parsed.cps.forEach(x => { if (!seen.has(x.cp)){ seen.add(x.cp); uniq.push(x); } });
+  const dupes = parsed.cps.length - uniq.length;
+
+  if (!uniq.length){
+    toast('Introduza pelo menos um código postal válido (ex.: 1000-001)', 'err');
+    return;
+  }
+  if (parsed.noCP.length) toast(parsed.noCP.length + ' linha(s) sem código postal foram ignoradas', 'err');
+  else if (dupes > 0) toast(dupes + ' código(s) postal(ais) repetido(s) eliminado(s)');
+
+  showProgress(2, 'A localizar endereços…');
+
+  const raw = uniq.map(x => ({
+    uid: uid(), cp: x.cp, raw: x.raw, label: '', lat: null, lng: null, level: null
+  }));
+
+  let done = 0;
+  await Promise.all(raw.map(s => geocodeCP(s.cp)
+    .then(g => { if (g) Object.assign(s, g); })
+    .catch(() => {})
+    .finally(() => { done++; showProgress(2 + done / raw.length * 50, `A localizar ${done} de ${raw.length}…`); })));
+
+  state.baseStops = raw.filter(s => s.lat != null);
+  const failed = raw.length - state.baseStops.length;
+  if (!state.baseStops.length){
+    hideProgress();
+    if (providers.nominatim.limited && providers.photon.limited){
+      toast('Os serviços de pesquisa de endereços recusaram o pedido (limite de uso). '
+          + 'Espere alguns minutos e volte a carregar.', 'err');
+    } else {
+      toast('Nenhum código postal foi encontrado', 'err');
+    }
+    return;
+  }
+
+  // origem GPS ou morada indicada à mão
+  if (startMode() === 'gps' && !state.gps){
+    if (!await locate()){ hideProgress(); return; }
+  } else if (startMode() === 'custom'){
+    const txt = $('#startInput').value.trim();
+    if (txt && (!state.startPoint || state.startPoint.raw !== txt)){
+      if (!await locateStart()){ hideProgress(); return; }
+    }
+    if (!state.startPoint){
+      hideProgress();
+      toast('Indique a morada de partida ou escolha outro modo', 'err');
+      return;
+    }
+  }
+
+  lastStartMode = startMode();
+  showProgress(55, 'A aplicar o modo de partida…');
+  applyStartMode();
+
+  showProgress(60, 'A calcular distâncias reais entre paragens…');
+  try {
+    state.matrix = await buildMatrix(state.stops);
+    state.matrixProfile = osrmProfile();
+  } catch(e){
+    const n = state.stops.length;
+    const dist = Array.from({ length: n }, (_, i) =>
+      Array.from({ length: n }, (_, j) => i === j ? 0 : haversine(state.stops[i], state.stops[j]) * 1.3));
+    state.matrix = { dist, dur: dist.map(r => r.map(d => d / 12.5)), approx: true, missing: 0 };
+    state.matrixProfile = 'geodesico';
+  }
+  state.profileLimited = osrmProfile() !== 'driving';
+
+  showProgress(82, 'A otimizar o caminho…');
+  await new Promise(r => setTimeout(r, 30));
+  optimise();
+
+  showProgress(88, 'A desenhar a rota no mapa…');
+  await fetchGeometry();
+
+  hideProgress();
+  ['#cardResult', '#cardStops', '#cardGM'].forEach(s => $(s).style.display = '');
+  ['#btnReverse', '#btnOptimise', '#btnCsv', '#btnPrint', '#btnClear'].forEach(s => $(s).disabled = false);
+  renderAll();
+
+  if (state.matrix.approx) toast('Distâncias parciais estimadas — confirme a rota', 'err');
+  else toast(`Rota pronta: ${fmtKm(state.totalM)} · ${fmtMin(state.totalT)}`
+             + (failed ? ` · ${failed} código(s) ignorado(s)` : ''), failed ? '' : 'ok');
+}
+
+/** Monta state.stops conforme o modo de partida escolhido. */
+function startMode(){ return $('#optStart').value; }
+
+/** Cria a paragem sintética que representa o ponto de partida. */
+function mkStart(p, title, label){
+  return { uid: uid(), synthetic: true, cp: '', raw: '', startTitle: title,
+           label: label || '', lat: p.lat, lng: p.lng, level: 'exact' };
+}
+
+function applyStartMode(){
+  const mode = startMode();
+  const base = state.baseStops;
+  if (mode === 'gps' && state.gps){
+    state.stops = [mkStart(state.gps, 'A minha localização', 'Posição atual')].concat(base);
+  } else if (mode === 'custom' && state.startPoint){
+    state.stops = [mkStart(state.startPoint, 'Partida indicada', state.startPoint.label)].concat(base);
+  } else {
+    state.stops = base.slice();
+  }
+  state.order = state.stops.map(s => s.uid);
+  state.geometry = null;
+  state.legInfo   = new Array(Math.max(0, state.stops.length - 1)).fill(null);
+  state.exact = false;
+  state.solved = true;
+}
+
+function optimise(){
+  const n = state.stops.length;
+  if (!state.matrix || n < 2){ state.solved = true; renderAll(); return; }
+
+  const by = $('#optBy').value === 'time' ? state.matrix.dur : state.matrix.dist;
+  const mode = startMode();
+
+  let start = 0, tryAll = false;
+  if ((mode === 'gps' || mode === 'custom') && state.stops[0] && state.stops[0].synthetic) start = 0;
+  else if (mode === 'auto') tryAll = true;
+
+  const res = solveTSP(by, start, tryAll);
+  state.order  = res.order.map(i => state.stops[i].uid);
+  state.exact  = res.exact;
+  state.solved = true;
+}
+
+async function fetchGeometry(){
+  const seq = currentSeq();
+  const n = seq.length;
+  state.geometry = new Array(Math.max(0, n - 1)).fill(null);
+  state.legInfo   = new Array(Math.max(0, n - 1)).fill(null);
+  if (n < 2 || !state.matrix) return;
+
+  const prof = osrmProfile();
+  const STEP = 39;                      // blocos de 40 coordenadas
+
+  for (let i = 0; i < n - 1; i += STEP){
+    const j = Math.min(n - 1, i + STEP);
+    const co = seq.slice(i, j + 1).map(s => s.lng.toFixed(6) + ',' + s.lat.toFixed(6)).join(';');
+    try {
+      const r = await fetchJSON(
+        `${OSRM}/route/v1/${prof}/${co}?overview=full&geometries=geojson&steps=false`,
+        { timeout: 25000 });
+      if (r.code !== 'Ok' || !r.routes || !r.routes[0]) continue;
+      const rt = r.routes[0];
+      const geo = rt.geometry.coordinates.map(c => [c[1], c[0]]);
+      const legs = rt.legs || [];
+      for (let k = 0; k < j - i; k++){
+        const a = Math.floor(k / (j - i) * geo.length);
+        const b = Math.floor((k + 1) / (j - i) * geo.length);
+        state.geometry[i + k] = geo.slice(a, Math.max(b, a + 1));
+        state.legInfo[i + k] = legs[k] ? { km: legs[k].distance / 1000, min: legs[k].duration / 60 } : null;
+      }
+    } catch(e){ /* mantém o traçado recto entre paragens */ }
+  }
+}
+
+function renderAll(){ renderStops(); renderStats(); renderLegs(); renderMap(); updateGM(); }
+
+function updateGM(){
+  const seq = currentSeq();
+  if (!seq.length){ $('#cardGM').style.display = 'none'; return; }
+  $('#cardGM').style.display = '';
+
+  const chunks  = gmChunks(seq);
+  const split   = chunks.length > 1;
+  const primary = split ? chunks[0] : seq;
+
+  $('#btnGM').innerHTML = split
+    ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg> Abrir a 1.ª etapa`
+    : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l19-9-9 19-2-8-8-2z"/></svg> Abrir rota completa no Google Maps`;
+
+  const notes = [];
+  if (split){
+    notes.push(`São ${seq.length} paragens. O Google aceita ${GM_MAX_STOPS} por ligação, por isso a rota foi
+      dividida em <b>${chunks.length} trajectos</b> — use a secção <b>5 · Etapas</b>, por ordem.`);
+  } else {
+    notes.push($('#optGoogleOpt').checked
+      ? 'O Google poderá reotimizar a ordem ao abrir (pode ficar ainda melhor).'
+      : 'Ordem enviada exactamente como foi calculada.');
+  }
+  if ($('#optNavigate').checked && seq.length > 1) notes.push('A navegação começa de imediato.');
+  $('#gmNote').innerHTML = notes.join(' ');
+
+  // mesma ligação usada pelo botão principal — assim "copiar" dá sempre o que vai abrir
+  $('#btnCopy').dataset.url = gmURL(primary, true);
+}
+
+/* ================================================================ PROGRESSO */
+function showProgress(pct, label){
+  $('#prog').style.display = ''; $('#progTxt').style.display = '';
+  $('#progBar').style.width = Math.min(100, Math.max(0, pct)) + '%';
+  $('#progStep').textContent = label || '';
+  $('#progPct').textContent = Math.round(pct) + '%';
+  $('#btnRun').disabled = true;
+}
+function hideProgress(){
+  $('#prog').style.display = 'none';
+  $('#progTxt').style.display = 'none';
+  $('#progBar').style.width = '0%';
+  $('#btnRun').disabled = false;
+}
+
+/* ================================================================== EVENTOS */
+$('#btnRun').addEventListener('click', run);
+
+$('#btnAdd').addEventListener('click', () => {
+  const v = $('#manual').value.trim();
+  if (!v) return;
+  if (!extractCPs(v).length){ toast('Código postal inválido: ' + v, 'err'); return; }
+  const cur = $('#input').value.replace(/\s+$/, '');
+  $('#input').value = (cur ? cur + '\n' : '') + v;
+  $('#manual').value = '';
+  updateCount();
+});
+$('#manual').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); $('#btnAdd').click(); } });
+$('#input').addEventListener('input', updateCount);
+
+function updateCount(){
+  const parsed = readInput($('#input').value);
+  const uniq = new Set(parsed.cps.map(x => x.cp));
+  const n = uniq.size, tot = parsed.cps.length;
+  $('#countInfo').textContent = n === 0
+    ? (parsed.noCP.length ? parsed.noCP.length + ' linha(s) sem código postal' : 'Nenhum código lido')
+    : n + ' código(s) postal(ais)' + (tot > n ? ' de ' + tot : '');
+  const d = tot - n, el = $('#dupInfo');
+  if (d > 0){ el.style.display = ''; el.textContent = d + ' repetido(s)'; }
+  else el.style.display = 'none';
+}
+
+/* ---- lista: subir / descer / remover ---- */
+$('#stops').addEventListener('click', e => {
+  const up = e.target.closest('[data-up]');
+  const down = e.target.closest('[data-down]');
+  const del = e.target.closest('[data-del]');
+  if (up){
+    const i = +up.dataset.up;
+    [state.order[i - 1], state.order[i]] = [state.order[i], state.order[i - 1]];
+    afterEdit(); return;
+  }
+  if (down){
+    const i = +down.dataset.down;
+    [state.order[i + 1], state.order[i]] = [state.order[i], state.order[i + 1]];
+    afterEdit(); return;
+  }
+  if (del){
+    const u = del.dataset.del;
+    state.order = state.order.filter(x => x !== u);
+    state.stops = state.stops.filter(s => s.uid !== u);
+    state.baseStops = state.baseStops.filter(s => s.uid !== u);
+    const at = state.order.indexOf(u);                    // mantém legInfo alinhado
+    if (at >= 0 && at < state.legInfo.length) state.legInfo.splice(at, 1);
+    if (!state.stops.length) return resetAll();
+    afterEdit();
+  }
+});
+
+function afterEdit(){
+  recomputeTotals();
+  renderAll();
+}
+
+function recomputeTotals(){
+  if (!state.matrix || state.stops.length < 2) return;
+  const t = totalsFor(state.order.map(idxOf));
+  state.totalM = t.m;
+  state.totalT = t.t;
+}
+
+/* ---- arrastar e largar ---- */
+let dragUid = null;
+$('#stops').addEventListener('dragstart', e => {
+  const el = e.target.closest('.stop');
+  if (!el) return;
+  dragUid = el.dataset.uid;
+  el.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+});
+$('#stops').addEventListener('dragover', e => {
+  e.preventDefault();
+  const el = e.target.closest('.stop');
+  if (!el || el.dataset.uid === dragUid) return;
+  document.querySelectorAll('.stop.over').forEach(x => x.classList.remove('over'));
+  el.classList.add('over');
+});
+$('#stops').addEventListener('drop', e => {
+  e.preventDefault();
+  const el = e.target.closest('.stop');
+  if (!el || !dragUid) return;
+  document.querySelectorAll('.stop.over').forEach(x => x.classList.remove('over'));
+  const from = state.order.indexOf(dragUid);
+  const to   = state.order.indexOf(el.dataset.uid);
+  if (from >= 0 && to >= 0 && from !== to){
+    state.order.splice(to, 0, state.order.splice(from, 1)[0]);
+    recomputeTotals();
+    renderAll();
+  }
+  dragUid = null;
+});
+$('#stops').addEventListener('dragend', () => {
+  document.querySelectorAll('.stop.dragging,.stop.over').forEach(x => x.classList.remove('dragging', 'over'));
+  dragUid = null;
+});
+
+/* ---- tocar num número abre o trajecto daquela paragem ---- */
+$('#stops').addEventListener('click', e => {
+  if (e.target.closest('button')) return;
+  const row = e.target.closest('.stop');
+  if (!row) return;
+  const i = state.order.indexOf(row.dataset.uid);
+  if (i < 0) return;
+  if (i === 0) openGM(currentSeq().slice(0, 2), true);
+  else openGM(currentSeq().slice(i - 1, i + 1), true);
+});
+
+/* ---- etapas ---- */
+$('#legs').addEventListener('click', e => {
+  const b = e.target.closest('[data-leg]');
+  if (b) openGM(gmChunks(currentSeq())[+b.dataset.leg], true);
+});
+
+/* ---- Google Maps ---- */
+$('#btnGM').addEventListener('click', () => {
+  const seq = currentSeq();
+  if (!seq.length) return;
+  const chunks = gmChunks(seq);
+  if (chunks.length === 1) openGM(seq, true);
+  else {
+    openGM(chunks[0], !$('#optNavigate').checked);
+    toast('Siga as etapas da secção 5, por ordem', 'ok');
+  }
+});
+$('#btnCopy').addEventListener('click', async () => {
+  const url = $('#btnCopy').dataset.url;
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('Ligação copiada', 'ok');
+  } catch(e){
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); toast('Ligação copiada', 'ok'); }
+    catch(e2){ toast('Não foi possível copiar a ligação', 'err'); }
+    ta.remove();
+  }
+});
+$('#btnListAll').addEventListener('click', () => openGM2(currentSeq(), false));
+
+function openGM2(seq, _){
+  if (!seq.length) return;
+  window.open(gmAllPoints(seq), '_blank', 'noopener');
+}
+
+/* ---- botões ---- */
+$('#btnReverse').addEventListener('click', () => {
+  state.order.reverse();
+  recomputeTotals();
+  renderAll();
+});
+$('#btnOptimise').addEventListener('click', async () => {
+  if (!state.matrix) return;
+  $('#btnOptimise').disabled = true;
+  optimise();
+  showProgress(95, 'A redesenhar a rota…');
+  await fetchGeometry();
+  hideProgress();
+  $('#btnOptimise').disabled = false;
+  renderAll();
+  toast('Rota re-optimizada', 'ok');
+});
+$('#btnPrint').addEventListener('click', () => window.print());
+$('#btnCsv').addEventListener('click', () => {
+  const rows = [['Ordem', 'Código postal', 'Morada', 'Latitude', 'Longitude', 'Km desde a anterior', 'Min desde a anterior']];
+  currentSeq().forEach((s, i) => {
+    const leg = state.legInfo[i - 1];
+    rows.push([i + 1, s.synthetic ? (s.startTitle || 'Partida') : s.cp, s.label || '', s.lat, s.lng,
+               leg ? leg.km.toFixed(2) : '', leg ? Math.round(leg.min) : '']);
+  });
+  rows.push([]);
+  rows.push(['TOTAL', '', '', '', '', state.totalM ? (state.totalM / 1000).toFixed(2) : '',
+             state.totalT ? Math.round(state.totalT / 60) : '']);
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+  const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = 'rota-otimizada.csv'; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+$('#btnClear').addEventListener('click', () => {
+  if (state.stops.length && !confirm('Limpar todos os códigos postais?')) return;
+  resetAll();
+});
+
+function resetAll(){
+  $('#input').value = '';
+  Object.assign(state, { baseStops: [], stops: [], order: [], matrix: null, matrixProfile: '',
+                         geometry: null, legInfo: [], totalM: 0, totalT: 0,
+                         exact: false, solved: false, profileLimited: false });
+  ['#cardResult', '#cardStops', '#cardGM', '#cardLegs'].forEach(s => $(s).style.display = 'none');
+  ['#btnReverse', '#btnOptimise', '#btnCsv', '#btnPrint', '#btnClear'].forEach(s => $(s).disabled = true);
+  clearMapLayers();
+  $('#legend').style.display = 'none';
+  updateCount();
+  renderStops();
+}
+
+/* ---- ponto de partida indicado à mão ---- */
+function renderStartStatus(msg){
+  const el = $('#startStatus');
+  if (msg != null){ el.innerHTML = msg; return; }
+  const typed = $('#startInput').value.trim();
+  const sp = state.startPoint;
+
+  if (sp && (!typed || sp.raw === typed)){
+    el.innerHTML = '<span class="badge ok">localizado</span>' + esc(sp.label) +
+      ' <span style="color:#94a3b8">(' + sp.lat.toFixed(5) + ', ' + sp.lng.toFixed(5) + ')</span>';
+    return;
+  }
+  if (typed){
+    el.innerHTML = 'Carregue em <b>Localizar e usar como partida</b> (ou prima Enter).';
+    return;
+  }
+  el.innerHTML = 'Escreva aqui a morada de onde parte o trajecto. Escrever activa automaticamente a opção ' +
+    '<b>Morada indicada</b> em cima. Aceita endereço completo ou código postal.';
+}
+
+/** Muda o modo de partida e mantém a rota em sintonia. */
+function setStartMode(m){
+  const sel = $('#optStart');
+  if (sel.value === m) return;
+  sel.value = m;
+  lastStartMode = m;
+  renderStartStatus();
+  if (state.matrix) rebuildRoute();
+}
+
+async function locateStart(){
+  const txt = $('#startInput').value.trim();
+  if (!txt){ toast('Escreva a morada de partida', 'err'); return false; }
+  renderStartStatus('A localizar…');
+  const rec = await geocodeAddress(txt);
+  if (!rec){
+    state.startPoint = null;
+    renderStartStatus('<span class="badge bad">não encontrado</span> Não foi possível localizar esta morada.');
+    toast('Não foi possível localizar a morada de partida', 'err');
+    return false;
+  }
+  state.startPoint = { lat: rec.lat, lng: rec.lng, label: rec.label || txt, raw: txt };
+  renderStartStatus();
+  if (!state.matrix) map.setView([rec.lat, rec.lng], 14);
+  return true;
+}
+
+/* Escrever a morada basta — o selector acompanha sozinho. */
+$('#startInput').addEventListener('input', () => {
+  const has = !!$('#startInput').value.trim();
+  setStartMode(has ? 'custom' : 'auto');
+});
+
+$('#btnStartLocate').addEventListener('click', async () => {
+  if (!$('#startInput').value.trim()){ toast('Escreva a morada de partida', 'err'); return; }
+  const ok = await locateStart();
+  if (state.matrix) await rebuildRoute();      // reflecte o resultado, mesmo falhado
+  toast(ok ? 'Partida definida' : 'A rota passa a usar a primeira paragem da lista', ok ? 'ok' : 'err');
+});
+$('#startInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter'){ e.preventDefault(); $('#btnStartLocate').click(); }
+});
+$('#btnStartClear').addEventListener('click', () => {
+  $('#startInput').value = '';
+  state.startPoint = null;
+  renderStartStatus();
+  if (state.matrix && startMode() === 'custom') rebuildRoute();
+});
+
+/* ---- opções que alteram o resultado ---- */
+let rebuildTimer = null;
+let lastStartMode = 'auto';
+
+/** Recalcula a matriz e redesenha a rota (partida mudou, perfil mudou, …). */
+async function rebuildRoute(){
+  applyStartMode();
+  showProgress(20, 'A recalcular distâncias…');
+  try {
+    state.matrix = await buildMatrix(state.stops);
+    state.matrixProfile = osrmProfile();
+  } catch(e){
+    toast('Não foi possível recalcular as distâncias', 'err');
+  }
+  state.profileLimited = osrmProfile() !== 'driving';
+  optimise();
+  showProgress(85, 'A desenhar a rota…');
+  await fetchGeometry();
+  hideProgress();
+  renderAll();
+}
+
+function onOptionChange(){
+  const mode = startMode();
+  renderStartStatus();
+
+  // falta informação — locate()/locateStart() tratam do resto
+  if (mode === 'gps' && !state.gps){
+    lastStartMode = mode;
+    locate().then(ok => { if (ok && state.matrix) rebuildRoute(); });
+    return;
+  }
+  if (mode === 'custom' && !state.startPoint){
+    renderStartStatus();
+    lastStartMode = mode;
+    if (!state.matrix){ updateGM(); return; }
+    locateStart().then(ok => { if (ok) rebuildRoute(); });
+    return;
+  }
+
+  const stopSetChanged = (mode !== lastStartMode);
+  lastStartMode = mode;
+
+  if (!state.matrix){ updateGM(); return; }
+
+  const profileChanged = osrmProfile() !== state.matrixProfile;
+
+  clearTimeout(rebuildTimer);
+  rebuildTimer = setTimeout(async () => {
+    if (stopSetChanged || profileChanged) await rebuildRoute();
+    else {
+      optimise();
+      showProgress(85, 'A desenhar a rota…');
+      await fetchGeometry();
+      hideProgress();
+      renderAll();
+    }
+  }, 220);
+}
+
+['#optBy', '#optStart', '#optMode', '#optRound', '#optAvoidTolls',
+ '#optNavigate', '#optGoogleOpt'].forEach(sel => $(sel).addEventListener('change', onOptionChange));
+
+/* ---- mapa ---- */
+$('#btnFit').addEventListener('click', () => {
+  const pts = currentSeq().filter(s => s.lat != null).map(s => [s.lat, s.lng]);
+  if (state.gps) pts.push([state.gps.lat, state.gps.lng]);
+  if (pts.length) map.fitBounds(pts, { padding: [45, 45], maxZoom: 15 });
+});
+
+$('#btnLayer').addEventListener('click', () => {
+  state.layer = (state.layer + 1) % BASE_LAYERS.length;
+  map.eachLayer(l => { if (l instanceof L.TileLayer) map.removeLayer(l); });
+  BASE_LAYERS[state.layer].addTo(map);
+  $('#layerName').textContent = LAYER_NAMES[state.layer];
+});
+
+function locate(){
+  return new Promise(resolve => {
+    if (!navigator.geolocation){ toast('GPS não disponível neste dispositivo', 'err'); return resolve(false); }
+    $('#btnLocate').disabled = true;
+    navigator.geolocation.getCurrentPosition(
+      p => {
+        state.gps = { lat: p.coords.latitude, lng: p.coords.longitude };
+        $('#btnLocate').disabled = false;
+        $('#optStart').value = 'gps';
+        resolve(true);
+      },
+      err => {
+        $('#btnLocate').disabled = false;
+        toast('Não foi possível obter a localização (' + err.message + ')', 'err');
+        resolve(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+    );
+  });
+}
+
+$('#btnLocate').addEventListener('click', async () => {
+  if (!await locate()) return;
+  lastStartMode = 'gps';
+  if (!state.matrix){
+    map.setView([state.gps.lat, state.gps.lng], 13);
+    toast('Localização captada — calcule a rota para a usar como partida', 'ok');
+    return;
+  }
+  await rebuildRoute();
+  toast('Partida definida para a sua localização', 'ok');
+});
+
+/* ------------------------------------------------------------- arranque */
+updateCount();
+renderStops();
+renderStartStatus();
+setTimeout(() => map.invalidateSize(), 300);
+window.addEventListener('resize', () => map.invalidateSize());
+window.addEventListener('orientationchange', () => setTimeout(() => map.invalidateSize(), 400));
+</script>
+</body>
+</html>
